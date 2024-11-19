@@ -1,0 +1,650 @@
+https://chatgpt.com/share/673cf8ac-00c4-8000-bafe-4cdc33dc51d0
+Exercise 1: Implement the producer-consumer problem using pthreads and mutex operations.
+
+Constraints:
+
+(a) A producer only produces if the buffer is empty, and the consumer only consumes
+
+if some content is in the buffer. (b) A producer writes an item into the buffer, and the consumer deletes the last produced item in the buffer.
+
+(c) A producer writes on the last consumed index of the buffer.
+ChatGPT said:
+ChatGPT
+Here's an implementation of the producer-consumer problem in C using pthreads and mutex operations, adhering to your constraints:
+
+Code:
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <unistd.h>
+
+#define BUFFER_SIZE 10
+
+int buffer[BUFFER_SIZE];
+int index = -1; // Indicates the current position of the buffer (-1 means empty)
+
+pthread_mutex_t mutex;        // Mutex lock
+pthread_cond_t buffer_empty;  // Condition variable for buffer empty
+pthread_cond_t buffer_full;   // Condition variable for buffer full
+
+void *producer(void *arg) {
+    while (1) {
+        int item = rand() % 100; // Random item to produce
+        pthread_mutex_lock(&mutex);
+
+        // Wait until the buffer is empty
+        while (index != -1) {
+            pthread_cond_wait(&buffer_empty, &mutex);
+        }
+
+        // Produce the item
+        buffer[++index] = item;
+        printf("Producer produced: %d\n", item);
+
+        // Signal the consumer
+        pthread_cond_signal(&buffer_full);
+        pthread_mutex_unlock(&mutex);
+
+        sleep(1); // Simulate work
+    }
+    return NULL;
+}
+
+void *consumer(void *arg) {
+    while (1) {
+        pthread_mutex_lock(&mutex);
+
+        // Wait until the buffer has content
+        while (index == -1) {
+            pthread_cond_wait(&buffer_full, &mutex);
+        }
+
+        // Consume the item
+        int item = buffer[index--];
+        printf("Consumer consumed: %d\n", item);
+
+        // Signal the producer
+        pthread_cond_signal(&buffer_empty);
+        pthread_mutex_unlock(&mutex);
+
+        sleep(1); // Simulate work
+    }
+    return NULL;
+}
+
+int main() {
+    pthread_t prod_thread, cons_thread;
+
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&buffer_empty, NULL);
+    pthread_cond_init(&buffer_full, NULL);
+
+    pthread_create(&prod_thread, NULL, producer, NULL);
+    pthread_create(&cons_thread, NULL, consumer, NULL);
+
+    pthread_join(prod_thread, NULL);
+    pthread_join(cons_thread, NULL);
+
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&buffer_empty);
+    pthread_cond_destroy(&buffer_full);
+
+    return 0;
+}
+Explanation:
+Shared Buffer:
+
+buffer[]: Stores the produced items.
+index: Tracks the current position in the buffer.
+Mutex and Condition Variables:
+
+pthread_mutex_t mutex: Ensures mutual exclusion while accessing the buffer.
+pthread_cond_t buffer_empty: Signals when the buffer becomes empty.
+pthread_cond_t buffer_full: Signals when the buffer contains an item.
+Producer:
+
+Produces an item only if the buffer is empty.
+Writes the item to the last consumed position (index).
+Consumer:
+
+Consumes an item only if the buffer contains an item.
+Consumes the last produced item (index).
+Thread Synchronization:
+
+pthread_cond_wait ensures that the producer or consumer waits until the buffer is ready.
+pthread_cond_signal notifies the waiting thread when the condition is met.
+Constraints:
+This code adheres to the given constraints by ensuring:
+
+The producer produces only if the buffer is empty.
+The consumer consumes only if the buffer has content.
+The producer writes at the last consumed index.
+Let me know if you need further clarification or modifications!
+
+
+
+
+
+
+You said:
+Exercise 2: Implement the reader-writer problem using semaphore and mutex operations to syn- chronize n readers active in the reader section at the same time and one writer active at a time.
+
+Constraints:
+
+(a) If n readers are active, no writer is allowed to write.
+
+(b) If one writer is writing, no other writer should be allowed to read or write on the shared variable.
+ChatGPT said:
+ChatGPT
+Here’s an implementation of the Reader-Writer Problem using semaphores and mutexes to meet your constraints.
+
+Code:
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
+
+sem_t resource;           // Semaphore to ensure one writer or no readers
+pthread_mutex_t r_mutex;  // Mutex to synchronize reader count access
+int reader_count = 0;     // Number of active readers
+int shared_variable = 0;  // Shared variable to be read/written
+
+void *reader(void *arg) {
+    int reader_id = *(int *)arg;
+
+    while (1) {
+        // Reader wants to enter
+        pthread_mutex_lock(&r_mutex);
+        reader_count++;
+        if (reader_count == 1) {
+            sem_wait(&resource); // First reader locks the resource
+        }
+        pthread_mutex_unlock(&r_mutex);
+
+        // Reading
+        printf("Reader %d reads shared variable: %d\n", reader_id, shared_variable);
+        sleep(1);
+
+        // Reader exits
+        pthread_mutex_lock(&r_mutex);
+        reader_count--;
+        if (reader_count == 0) {
+            sem_post(&resource); // Last reader unlocks the resource
+        }
+        pthread_mutex_unlock(&r_mutex);
+
+        sleep(1); // Simulate delay
+    }
+    return NULL;
+}
+
+void *writer(void *arg) {
+    int writer_id = *(int *)arg;
+
+    while (1) {
+        // Writer wants to enter
+        sem_wait(&resource);
+
+        // Writing
+        shared_variable++;
+        printf("Writer %d writes shared variable: %d\n", writer_id, shared_variable);
+        sleep(1);
+
+        // Writer exits
+        sem_post(&resource);
+
+        sleep(2); // Simulate delay
+    }
+    return NULL;
+}
+
+int main() {
+    int i;
+    pthread_t readers[5], writers[2];
+    int reader_ids[5], writer_ids[2];
+
+    // Initialize semaphore and mutex
+    sem_init(&resource, 0, 1);
+    pthread_mutex_init(&r_mutex, NULL);
+
+    // Create reader threads
+    for (i = 0; i < 5; i++) {
+        reader_ids[i] = i + 1;
+        pthread_create(&readers[i], NULL, reader, &reader_ids[i]);
+    }
+
+    // Create writer threads
+    for (i = 0; i < 2; i++) {
+        writer_ids[i] = i + 1;
+        pthread_create(&writers[i], NULL, writer, &writer_ids[i]);
+    }
+
+    // Join threads (optional, as this is an infinite loop)
+    for (i = 0; i < 5; i++) {
+        pthread_join(readers[i], NULL);
+    }
+    for (i = 0; i < 2; i++) {
+        pthread_join(writers[i], NULL);
+    }
+
+    // Destroy semaphore and mutex
+    sem_destroy(&resource);
+    pthread_mutex_destroy(&r_mutex);
+
+    return 0;
+}
+Explanation:
+Shared Variables:
+
+resource: A semaphore that ensures mutual exclusion for writers and readers.
+r_mutex: A mutex that protects access to the reader_count.
+reader_count: Tracks the number of active readers.
+shared_variable: The shared variable to be read or written.
+Reader:
+
+Acquires the r_mutex to increment the reader_count.
+If it's the first reader, locks the resource semaphore to block writers.
+Reads the shared_variable.
+Releases the r_mutex after decrementing the reader_count.
+If it's the last reader, releases the resource semaphore.
+Writer:
+
+Acquires the resource semaphore, ensuring exclusive access to the shared resource.
+Writes to the shared_variable.
+Releases the resource semaphore after writing.
+Synchronization:
+
+Writers have exclusive access to the shared variable because sem_wait(&resource) ensures no readers or other writers can proceed.
+Multiple readers can read simultaneously as long as no writer is active.
+Constraints:
+(a) If n readers are active, no writer can write: Enforced by locking resource when the first reader enters.
+(b) If one writer is writing, no other writer or reader can proceed: Enforced by the semaphore resource.
+Let me know if you need further clarification or enhancements!
+
+
+
+
+
+
+You said:
+Exercise 1: Develop a program that demonstrates Inter-Process Communication (IPC) using named pipes.
+
+Tasks:
+
+• Create a pair of named pipes: one for sending data and another for receiving data.
+
+• Develop a sender program that writes a message to the sending pipe.
+
+Create a receiver program that reads from the receiving pipe and displays the received message
+ChatGPT said:
+ChatGPT
+Here is a demonstration of Inter-Process Communication (IPC) using named pipes (FIFO) in C. The solution involves two separate programs: one for the sender and one for the receiver.
+
+Steps to Implement:
+Create Named Pipes: Use mkfifo to create two pipes, one for sending data and another for receiving data.
+Sender Program: Writes a message to the sending pipe.
+Receiver Program: Reads the message from the sending pipe and displays it.
+Sender Program (sender.c):
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#define PIPE_NAME "send_pipe"
+
+int main() {
+    int fd;
+    char message[100];
+
+    // Open the named pipe for writing
+    fd = open(PIPE_NAME, O_WRONLY);
+    if (fd == -1) {
+        perror("Failed to open the pipe");
+        exit(1);
+    }
+
+    // Get the message from the user
+    printf("Enter a message to send: ");
+    fgets(message, sizeof(message), stdin);
+
+    // Write the message to the pipe
+    write(fd, message, sizeof(message));
+    printf("Message sent: %s", message);
+
+    close(fd);
+    return 0;
+}
+Receiver Program (receiver.c):
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#define PIPE_NAME "send_pipe"
+
+int main() {
+    int fd;
+    char message[100];
+
+    // Open the named pipe for reading
+    fd = open(PIPE_NAME, O_RDONLY);
+    if (fd == -1) {
+        perror("Failed to open the pipe");
+        exit(1);
+    }
+
+    // Read the message from the pipe
+    read(fd, message, sizeof(message));
+    printf("Message received: %s", message);
+
+    close(fd);
+    return 0;
+}
+Setting Up and Running the Programs:
+Create the Named Pipe:
+
+bash
+Copy code
+mkfifo send_pipe
+Compile the Programs:
+
+bash
+Copy code
+gcc sender.c -o sender
+gcc receiver.c -o receiver
+Run the Receiver Program: Open a terminal and run:
+
+bash
+Copy code
+./receiver
+Run the Sender Program: Open another terminal and run:
+
+bash
+Copy code
+./sender
+Interaction:
+
+Type a message in the sender program.
+The receiver program will display the received message.
+Cleanup:
+After running the programs, you can delete the named pipe:
+
+bash
+Copy code
+rm send_pipe
+This implementation demonstrates IPC using named pipes, allowing communication between two processes. Let me know if you need additional features or explanations!
+
+
+
+
+
+
+You said:
+Exercise 2: Demonstrate the usage of Shared Memory for IPC.
+
+Tasks:
+
+• Create a shared memory segment and attach it to multiple processes.
+
+• Develop a producer-consumer model, where one process writes data into the shared memory, and another process reads from it.
+ChatGPT said:
+ChatGPT
+Below is an implementation of Inter-Process Communication (IPC) using Shared Memory in a Producer-Consumer Model.
+
+Steps to Implement:
+Shared Memory Segment:
+Use shmget to create a shared memory segment.
+Use shmat to attach the segment to processes.
+Producer Process:
+Writes data into the shared memory.
+Consumer Process:
+Reads data from the shared memory.
+Producer Program (producer.c):
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <unistd.h>
+
+#define SHM_KEY 1234
+#define SHM_SIZE 1024
+
+int main() {
+    // Create shared memory segment
+    int shmid = shmget(SHM_KEY, SHM_SIZE, 0666 | IPC_CREAT);
+    if (shmid == -1) {
+        perror("Shared memory creation failed");
+        exit(1);
+    }
+
+    // Attach to the shared memory
+    char *shared_memory = (char *)shmat(shmid, NULL, 0);
+    if (shared_memory == (char *)-1) {
+        perror("Shared memory attachment failed");
+        exit(1);
+    }
+
+    // Write data to the shared memory
+    printf("Enter a message to store in shared memory: ");
+    fgets(shared_memory, SHM_SIZE, stdin);
+    printf("Producer: Message written to shared memory.\n");
+
+    // Detach from the shared memory
+    shmdt(shared_memory);
+
+    return 0;
+}
+Consumer Program (consumer.c):
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <unistd.h>
+
+#define SHM_KEY 1234
+#define SHM_SIZE 1024
+
+int main() {
+    // Locate the shared memory segment
+    int shmid = shmget(SHM_KEY, SHM_SIZE, 0666);
+    if (shmid == -1) {
+        perror("Shared memory access failed");
+        exit(1);
+    }
+
+    // Attach to the shared memory
+    char *shared_memory = (char *)shmat(shmid, NULL, 0);
+    if (shared_memory == (char *)-1) {
+        perror("Shared memory attachment failed");
+        exit(1);
+    }
+
+    // Read data from the shared memory
+    printf("Consumer: Message read from shared memory: %s", shared_memory);
+
+    // Detach from the shared memory
+    shmdt(shared_memory);
+
+    // Remove the shared memory segment
+    shmctl(shmid, IPC_RMID, NULL);
+    printf("Consumer: Shared memory segment removed.\n");
+
+    return 0;
+}
+How to Run:
+Compile the Programs:
+
+bash
+Copy code
+gcc producer.c -o producer
+gcc consumer.c -o consumer
+Run the Producer: Open one terminal and execute:
+
+bash
+Copy code
+./producer
+Enter a message when prompted.
+Run the Consumer: Open another terminal and execute:
+
+bash
+Copy code
+./consumer
+The consumer will read and display the message from the shared memory.
+Explanation:
+Shared Memory Creation:
+
+The producer uses shmget to create a shared memory segment with a unique key (SHM_KEY) and size (SHM_SIZE).
+Both processes use shmat to attach to the segment.
+Data Exchange:
+
+The producer writes data into the shared memory.
+The consumer reads the data from the same shared memory segment.
+Memory Cleanup:
+
+The consumer removes the shared memory segment using shmctl with the IPC_RMID flag.
+This implementation demonstrates how to use shared memory for efficient IPC between multiple processes. Let me know if you have any questions or need enhancements!
+
+
+
+
+
+
+You said:
+Exercise 3: Explore IPC using Message Passing techniques.
+
+Tasks:
+
+• Design two processes where one process sends a signal to another process.
+
+• Develop signal handlers in both processes to manage incoming signals and per- form specific actions based on the received 
+signal
+ChatGPT said:
+ChatGPT
+Below is an example of Inter-Process Communication (IPC) using Message Passing via Signals. The implementation demonstrates two processes where one sends a signal to the other, and both have signal handlers to respond to the received signals.
+
+Steps to Implement:
+Signal Handlers:
+Use signal() or sigaction() to set up signal handling.
+Define specific actions to perform when a signal is received.
+Process Communication:
+Use kill() to send signals from one process to another.
+Tasks:
+Process 1 sends a signal to Process 2.
+Process 2 performs a specific action upon receiving the signal and optionally replies.
+Sender Process (sender.c):
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+
+// Signal handler for SIGUSR1
+void signal_handler(int sig) {
+    printf("Sender: Received acknowledgment from receiver (signal %d).\n", sig);
+}
+
+int main() {
+    pid_t receiver_pid;
+
+    // Get the PID of the receiver process
+    printf("Enter the PID of the receiver process: ");
+    scanf("%d", &receiver_pid);
+
+    // Set up the signal handler for SIGUSR1
+    signal(SIGUSR1, signal_handler);
+
+    // Send SIGUSR2 to the receiver process
+    printf("Sender: Sending signal SIGUSR2 to receiver (PID: %d)...\n", receiver_pid);
+    kill(receiver_pid, SIGUSR2);
+
+    // Wait for acknowledgment
+    pause();
+
+    return 0;
+}
+Receiver Process (receiver.c):
+c
+Copy code
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
+
+// Signal handler for SIGUSR2
+void signal_handler(int sig) {
+    printf("Receiver: Received signal %d from sender.\n", sig);
+
+    // Send acknowledgment (SIGUSR1) back to the sender
+    pid_t sender_pid = getppid(); // Assuming parent is the sender
+    printf("Receiver: Sending acknowledgment (SIGUSR1) to sender (PID: %d)...\n", sender_pid);
+    kill(sender_pid, SIGUSR1);
+}
+
+int main() {
+    // Get and display the receiver's PID
+    pid_t pid = getpid();
+    printf("Receiver: My PID is %d. Waiting for signals...\n", pid);
+
+    // Set up the signal handler for SIGUSR2
+    signal(SIGUSR2, signal_handler);
+
+    // Keep the process alive to handle signals
+    while (1) {
+        pause();
+    }
+
+    return 0;
+}
+How to Run:
+Compile the Programs:
+
+bash
+Copy code
+gcc sender.c -o sender
+gcc receiver.c -o receiver
+Run the Receiver: Open one terminal and execute:
+
+bash
+Copy code
+./receiver
+Note down the PID displayed.
+Run the Sender: Open another terminal and execute:
+
+bash
+Copy code
+./sender
+Enter the PID of the receiver process when prompted.
+Explanation:
+Signal Handling:
+
+SIGUSR1 and SIGUSR2 are user-defined signals used for communication.
+Both sender and receiver define signal handlers (signal_handler) to handle incoming signals.
+Message Passing:
+
+The sender sends SIGUSR2 to the receiver using kill().
+The receiver responds with SIGUSR1 as an acknowledgment.
+Synchronization:
+
+The pause() function ensures the sender waits for the acknowledgment before terminating.
+This implementation provides a basic framework for IPC using signal-based message passing. Let me know if you need further enhancements or additional examples!
+
+
+
+
+
+
